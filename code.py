@@ -8,6 +8,9 @@ import pulseio
 import math
 import busio
 
+#boolean to invert motors on left side of robot since they are mechanically mounted to spin opposite motors on right side
+global invertleft = 1
+
 tx_commands = {'request_values': b'\01'}
 
 # oh you fancy, huh?
@@ -84,77 +87,49 @@ class Robot:
         self.rl.setEnable()
         self.rr.setEnable()
 
-    def driveForward(self, speed):
-        self.setDisabled()
-        self.fl.setSpeed(speed)
-        self.fr.setSpeed(speed)
-        self.rl.setSpeed(speed)
-        self.rr.setSpeed(speed)
-        self.setEnabled()
 
-    def driveReverse(self, speed):
-        self.driveForward(speed * -1)
+    #calculating motor speed for mecanum drive
+    #lots of help from these two sources
+    #https://seamonsters-2605.github.io/archive/mecanum/
+    #https://robotpy.readthedocs.io/projects/wpilib/en/latest/_modules/wpilib/drive/mecanumdrive.html#MecanumDrive.drivePolar
+    #magnitude is speed of movement
+    #direction is angle in radians off of x axis, counter-clockwise is positive
+    #spin is the rotation rate (counter clockwise)
+    def calculatemotorspeeds(self, magnitude, direction, spin):
 
-    def driveRight(self, speed):
-        self.setDisabled()
+        #need a function to check bounds if you are calling this from the main loop!!        
+        global invertleft
+        motorspeeds=[
+        #left front
+        invertleft*math.sin(direction+math.pi()/4)+spin,
+        #left rear
+        invertleft*math.sin(direction-math.pi()/4)+spin,
+        #right front
+        math.sin(direction-math.pi()/4)-spin,
+        #right rear
+        math.sin(direction+math.pi()/4)-spin]
 
-        self.fl.setSpeed(speed*-1)
-        self.fr.setSpeed(speed)
-        self.rl.setSpeed(speed*-1)
-        self.rr.setSpeed(speed)
 
-        self.setEnabled()
+        biggestmotoroutput =  abs(max(motorspeeds,key=abs))
 
-    def driveLeft(self, speed):
-        self.setDisabled()
+        #normalizing if the magnitude is over 1 (since motor speeds range from 0-1) and then applying the magnitude vector
+        #this method may mess with expected spin speed but o well.
+        if biggestmotoroutput>1:
+            motorspeeds = x*(magnitude/biggestmotoroutput) for x in motorspeeds
+        
+        return motorspeeds
 
-        self.fl.setSpeed(speed)
-        self.fr.setSpeed(speed*-1)
-        self.rl.setSpeed(speed)
-        self.rr.setSpeed(speed*-1)
 
-        self.setEnabled()
+    def drive(self, motorspeeds):
+        self.setDisabled()
+        self.fl.setSpeed(motorspeeds[0])
+        self.fr.setSpeed(motorspeeds[1])
+        self.rl.setSpeed(motorspeeds[2])
+        self.rr.setSpeed(motorspeeds[3])
+        self.setEnabled()       
 
-    def rotateLeft(self, speed):
-        self.setDisabled()
-        self.fl.setSpeed(speed)
-        self.fr.setSpeed(speed*-1)
-        self.rl.setSpeed(speed*-1)
-        self.rr.setSpeed(speed)
-        self.setEnabled()
 
-    def rotateRight(self, speed):
-        self.setDisabled()
-        self.fl.setSpeed(speed*-1)
-        self.fr.setSpeed(speed)
-        self.rl.setSpeed(speed)
-        self.rr.setSpeed(speed*-1)
-        self.setEnabled()
-
-    def test_drive(self, speed, time_to_drive):
-        self.driveLeft(speed)
-        time.sleep(time_to_drive)
-        self.setDisabled()
-        time.sleep(time_to_drive)
-        self.driveRight(speed)
-        time.sleep(time_to_drive)
-        self.setDisabled()
-        time.sleep(time_to_drive)
-        self.driveForward(speed)
-        time.sleep(time_to_drive)
-        self.setDisabled()
-        time.sleep(time_to_drive)
-        self.driveReverse(speed)
-        time.sleep(time_to_drive)
-        self.setDisabled()
-        time.sleep(time_to_drive)
-        self.rotateLeft(speed)
-        time.sleep(time_to_drive)
-        self.setDisabled()
-        time.sleep(time_to_drive)
-        self.rotateRight(speed)
-        time.sleep(time_to_drive)
-        self.setDisabled()
+    
 
 
 
@@ -184,5 +159,9 @@ while True:
         rx_commands[command](my_robot, value)
     else:
         my_robot.setDisabled()
+
+    #need to receive control vector over serial
+    #vector = [magnitude, direction, spin]
+    drive(calculatemotorspeeds(magnitude,direction,spin))
 
     time.sleep(1) # 10ms loop time
