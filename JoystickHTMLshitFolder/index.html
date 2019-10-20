@@ -1,0 +1,193 @@
+<html>
+
+	<head>
+
+		<meta charset="utf-8">
+
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+
+		
+
+		<style>
+
+		body {
+
+			overflow	: hidden;
+
+			padding		: 0;
+
+			margin		: 0;
+
+			background-color: #BBB;
+
+		}
+
+		#info {
+
+			position	: absolute;
+
+			top		: 0px;
+
+			width		: 100%;
+
+			padding		: 5px;
+
+			text-align	: center;
+
+		}
+
+		#info a {
+
+			color		: #66F;
+
+			text-decoration	: none;
+
+		}
+
+		#info a:hover {
+
+			text-decoration	: underline;
+
+		}
+
+		#container {
+
+			width		: 100%;
+
+			height		: 100%;
+
+			overflow	: hidden;
+
+			padding		: 0;
+
+			margin		: 0;
+
+			-webkit-user-select	: none;
+
+			-moz-user-select	: none;
+
+		}
+
+		</style>
+
+	</head>
+
+	<body>
+
+		<div id="container"></div>
+
+		<div id="info">
+
+			<a href="http://learningthreejs.com/blog/2011/12/26/let-s-make-a-3d-game-virtual-joystick/" target="_blank">VirtualJoystick.js</a>
+
+			A library javascript to provide a virtual joystick on touchscreen.
+
+			-
+
+			inspired by this
+
+			<a href="http://sebleedelisle.com/2011/04/multi-touch-game-controller-in-javascripthtml5-for-ipad/">post</a>
+
+			from
+
+			<a href="http://sebleedelisle.com/">seb.ly</a>
+
+			<br/>
+
+			Touch the screen and move
+
+			-
+
+			works with mouse too as debug
+
+			<br/>
+
+			<span id="result"></span>
+
+		</div> 
+
+		<script src="192.168.1.100:8000/static/virtualjoystick.js"></script>
+
+		<script>
+
+			console.log("touchscreen is", VirtualJoystick.touchScreenAvailable() ? "available" : "not available");
+
+	
+      var joystickangle = 0;
+      var joystickmagnitude = 0;
+      
+
+			var joystick	= new VirtualJoystick({
+
+				container	: document.getElementById('container'),
+
+				mouseSupport	: true,
+
+        limitStickTravel: true,
+
+			});
+
+			joystick.addEventListener('touchStart', function(){
+
+				console.log('down')
+
+			})
+
+			joystick.addEventListener('touchEnd', function(){
+
+				console.log('up')
+
+			})
+
+
+
+			setInterval(function(){
+
+        
+        joystickmagnitude = Math.sqrt(Math.pow(joystick.deltaX(),2) + Math.pow(joystick.deltaY(),2));
+        joystickmagnitude = joystickmagnitude/101;
+        joystickangle = Math.atan2(joystick.deltaY(),joystick.deltaX());
+
+        if (joystickangle <0){ 
+          joystickangle = Math.abs(joystickangle);}
+          else{
+            joystickangle = Math.PI*2 - joystickangle;
+		  }
+		var ws = new WebSocket("ws://192.168.1.100:8000/ws");
+		var spin = 0.0;
+		var command='';
+		command = concat(joystickangle.toString());
+		command = concat(',');
+		command= concat(joystickmagnitude.toString());
+		command = concat(',');
+		command= concat(spin.toString());
+		ws.send(command);
+
+
+				var outputEl	= document.getElementById('result');
+
+				outputEl.innerHTML	= '<b>Result:</b> '
+
+					+ ' dx:'+joystick.deltaX()
+
+					+ ' dy:'+joystick.deltaY()
+
+          + 'magnitude: ' + joystickmagnitude
+
+          + 'angle: ' + joystickangle
+
+					+ (joystick.right()	? ' right'	: '')
+
+					+ (joystick.up()	? ' up'		: '')
+
+					+ (joystick.left()	? ' left'	: '')
+
+					+ (joystick.down()	? ' down' 	: '')	
+
+			}, 1/30 * 1000);
+
+		</script>
+
+	</body>
+
+</html>
