@@ -9,21 +9,21 @@ import math
 import busio
 
 #boolean to invert motors on left side of robot since they are mechanically mounted to spin opposite motors on right side
-global invertleft = 1
+invertleft = 1
 
 tx_commands = {'request_values': b'\01'}
 
 # oh you fancy, huh?
-rx_commands =  {
-            0x10: lambda robot, val: robot.driveForward(val),
-            0x11: lambda robot, val: robot.driveReverse(val),
-            0x12: lambda robot, val: robot.driveLeft(val),
-            0x13: lambda robot, val: robot.driveRight(val),
-            0x14: lambda robot, val: robot.rotateLeft(val),
-            0x15: lambda robot, val: robot.rotateRight(val),
-            0x20: lambda robot, val: robot.setDisabled(),
-            0x21: lambda robot, val: robot.setEnabled(),
-            }
+# rx_commands =  {
+#             0x10: lambda robot, val: robot.driveForward(val),
+#             0x11: lambda robot, val: robot.driveReverse(val),
+#             0x12: lambda robot, val: robot.driveLeft(val),
+#             0x13: lambda robot, val: robot.driveRight(val),
+#             0x14: lambda robot, val: robot.rotateLeft(val),
+#             0x15: lambda robot, val: robot.rotateRight(val),
+#             0x20: lambda robot, val: robot.setDisabled(),
+#             0x21: lambda robot, val: robot.setEnabled(),
+#             }
 
 class Motor:
     def __init__(self, pin_dir, enable, pwm, motor_reversed = False):
@@ -101,30 +101,36 @@ class Robot:
         global invertleft
         motorspeeds=[
         #left front
-        invertleft*math.sin(direction+math.pi()/4)+spin,
+        math.sin(direction+math.pi/4)*magnitude+spin,
         #left rear
-        invertleft*math.sin(direction-math.pi()/4)+spin,
+        math.sin(direction-math.pi/4)*magnitude+spin,
         #right front
-        math.sin(direction-math.pi()/4)-spin,
+        math.sin(direction-math.pi/4)*magnitude-spin,
         #right rear
-        math.sin(direction+math.pi()/4)-spin]
+        math.sin(direction+math.pi/4)*magnitude-spin]
+
+        #motorspeeds = [x*magnitude for x in motorspeeds]
 
 
         biggestmotoroutput =  abs(max(motorspeeds,key=abs))
+        print(biggestmotoroutput)
 
         #normalizing if the magnitude is over 1 (since motor speeds range from 0-1) and then applying the magnitude vector
         #this method may mess with expected spin speed but o well.
         if biggestmotoroutput>1:
-            motorspeeds = x*(magnitude/biggestmotoroutput) for x in motorspeeds
+            for i in range(0, len(motorspeeds)):
+                motorspeeds[i] = motorspeeds[i]/biggestmotoroutput
+        
+        print(motorspeeds)
         
         return motorspeeds
 
 
     def drive(self, motorspeeds):
         self.setDisabled()
-        self.fl.setSpeed(motorspeeds[0])
-        self.fr.setSpeed(motorspeeds[1])
-        self.rl.setSpeed(motorspeeds[2])
+        self.fl.setSpeed(motorspeeds[2])
+        self.fr.setSpeed(motorspeeds[0])
+        self.rl.setSpeed(motorspeeds[1])
         self.rr.setSpeed(motorspeeds[3])
         self.setEnabled()       
 
@@ -133,9 +139,9 @@ class Robot:
 
 
 
-rear_left_motor = Motor(pin_dir = board.D2, enable = board.D3, pwm = board.D4)
+rear_left_motor = Motor(pin_dir = board.D2, enable = board.D3, pwm = board.D4, motor_reversed=False)
 rear_right_motor = Motor(pin_dir = board.D7, enable = board.D6, pwm = board.D5, motor_reversed = True)
-front_right_motor = Motor(pin_dir = board.D9, enable = board.D8, pwm = board.D10)
+front_right_motor = Motor(pin_dir = board.D9, enable = board.D8, pwm = board.D10, motor_reversed=False)
 front_left_motor = Motor(pin_dir = board.D12, enable = board.D13, pwm = board.D11, motor_reversed = True)
 my_robot = Robot(front_left_motor, front_right_motor, rear_left_motor, rear_right_motor)
 print("Setting up")
@@ -148,20 +154,46 @@ while True:
     tx_buf = tx_commands['request_values']
     uart.write(tx_buf)
 
-    buf = bytearray(2)
-    uart.readinto(buf, 2)
-    command = buf[0]
-    value = buf[1]
-    value = value / 100
-    print('Command: {0} Value: {1}'.format(command, value))
+    buf = bytearray(4)
+    uart.readinto(buf, 4)
+    enabled = buf[0]
+    magnitude_raw = buf[1]
+    direction_raw = buf[2]
+    spin_raw = buf[3]
+    
+    print('Enabled: {3} Raw Magnitude: {0} Raw Direction: {1} Raw Spin: {2}'.format(magnitude_raw, direction_raw, spin_raw, enabled))
 
-    if(command in rx_commands):
-        rx_commands[command](my_robot, value)
-    else:
+    magnitude = magnitude_raw / 255.0 # magnitde_raw(0-255) -> magnitude(0-1)
+    direction = direction_raw / 255.0 * 2*math.pi # direction_raw(0-255) -> direction(0-2pi radians)
+    spin = (spin_raw - 127) / 127.0 # spin_raw(0-255) -> spin(0-1)
+
+    print('Magnitude: {0} Direction: {1} Spin: {2}'.format(magnitude, direction, spin))
+
+    if(enabled == 0):
         my_robot.setDisabled()
+        my_robot.drive((0,0,0,0))
+        print("DISABLED")
+    else:
+        my_robot.setEnabled()
+        my_robot.drive(my_robot.calculatemotorspeeds(magnitude,direction,spin))
+        print('Magnitude: {0} Direction: {1} Spin: {2}'.format(magnitude_raw, direction_raw, spin_raw))
+    
+
+    # my_robot.setDisabled...
+
+    # This is the old code
+    # command = buf[0]
+    # value = buf[1]
+    # value = value / 100
+    # print('Command: {0} Value: {1}'.format(command, value))
+
+    # if(command in rx_commands):
+    #     rx_commands[command](my_robot, value)
+    # else:
+    #     my_robot.setDisabled()
 
     #need to receive control vector over serial
     #vector = [magnitude, direction, spin]
-    drive(calculatemotorspeeds(magnitude,direction,spin))
 
-    time.sleep(1) # 10ms loop time
+
+    time.sleep(1/60) # 10ms loop time
